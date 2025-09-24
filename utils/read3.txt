@@ -1,0 +1,47 @@
+:: (A) Feature scalers per domain (z-score, with phase unwrap/offset already baked in your CSVs)
+python utils\fit_normalizer.py --csv dataset\MATH_S11.csv --out dataset\norm_math_unwrap.npz --mode zscore --unwrap-phase
+python utils\fit_normalizer.py --csv dataset\CST_S11.csv  --out dataset\norm_cst_unwrap.npz  --mode zscore --unwrap-phase
+
+:: (B) Physical split + scaler from TRAIN ONLY
+python utils\make_phy_split.py --csv dataset\Phy_S11.csv --train 0.70 --val 0.15 --seed 42 --prefix phy --no-stratify
+python utils\fit_normalizer.py --csv dataset\Phy_S11_trainOnly.csv --out dataset\norm_phys_train_unwrap.npz --mode zscore --unwrap-phase
+
+----------------------------------------------
+#Math ONLY
+#ResNet1D
+python scripts\train_curriculum.py --stage math --model resnet1d_v2  --csv dataset\MATH_S11.csv --feat_scaler dataset\norm_math_unwrap.npz  --epochs 200 --lr 3e-3 --batch_size 256  --loss l1 --w_acetal 1.0 --w_air 3.0  --wd 0.0  --outdir runs3\math_resnet_v2_l1_noreg_air3_lr3e-3
+python scripts\train_curriculum.py --stage math --model resnet1d_v2  --csv dataset\MATH_S11.csv --feat_scaler dataset\norm_math_unwrap.npz  --epochs 200 --lr 3e-3 --batch_size 256  --loss smoothl1 --w_acetal 1.0 --w_air 3.0  --wd 0.0  --outdir runs3\math_resnet_v2_smoothl1_air3_lr3e-3
+python scripts\train_curriculum.py --stage math --model resnet1d_v2   --csv dataset\MATH_S11.csv --feat_scaler dataset\norm_math_unwrap.npz  --epochs 150 --lr 5e-3 --batch_size 64  --loss smoothl1 --y_norm zscore --w_acetal 1.0 --w_air 2.0  --wd 1e-4  --outdir runs3\math_resnet_v2_smoothl1_yz_air2_bs64_lr5e-3
+#Transformer
+python scripts\train_curriculum.py --stage math --model transformer  --csv dataset\MATH_S11.csv --feat_scaler dataset\norm_math_unwrap.npz  --epochs 150 --lr 3e-3 --batch_size 128  --loss smoothl1 --w_acetal 1.0 --w_air 3.0 --wd 1e-4  --outdir runs3\math_transformer_smoothl1_air3
+
+
+------------------------------------------------
+resnet1d_v3
+#Math 
+python scripts\train_curriculum.py --stage math --model resnet1d_v3 --csv dataset\MATH_S11.csv  --feat_scaler dataset\norm_math_unwrap.npz --epochs 250 --lr 3e-3 --w_acetal 1.0 --w_air 1.0  --batch_size 128 --loss smoothl1 --y_norm zscore --wd 1e-4 --outdir runs3\math_resnet1d_v3_dualstream_dilated_air5
+python scripts\train_curriculum.py --stage math --model resnet1d_v3 --csv dataset\MATH_S11.csv --feat_scaler dataset\norm_math_unwrap.npz --epochs 200 --lr 3e-3 --batch_size 128 --loss smoothl1 --y_norm zscore --w_acetal 1.0 --w_air 5.0 --wd 1e-4 --outdir runs3\math_resnet1d_v3_dualstream_dilated_air5
+python scripts/train_curriculum.py --stage math --model resnet1d_v3  --csv dataset/MATH_S11.csv --feat_scaler dataset/norm_math_unwrap.npz  --epochs 180 --lr 1e-3 --batch_size 256  --loss smoothl1 --y_norm zscore --w_acetal 1.0 --w_air 5.0 --wd 0  --outdir runs3/math_resnet1d_v3_air_focus
+
+----------------------------------------------
+resnet1d_v3t
+python scripts/train_curriculum.py --stage math --model resnet1d_v3t --csv dataset/MATH_S11.csv --feat_scaler dataset/norm_math_unwrap.npz --epochs 200 --lr 1e-3 --batch_size 256 --loss smoothl1 --y_norm zscore --w_acetal 1.0 --w_air 5.0 --wd 0 --outdir runs3/math_resnet1d_v3t_dualstream
+
+
+--------------------------------------------
+resnet1d_v3t but try to make the data real and imaginary without unwrap
+python utils/fit_normalizer.py --csv dataset/MATH_S11.csv --repr reim --mode zscore --out dataset/norm_math_reim.npz
+python scripts/train_curriculum.py --stage math --model resnet1d_v3t --csv dataset/MATH_S11.csv --feat_scaler dataset/norm_math_reim.npz --epochs 200 --lr 1e-3 --batch_size 256 --loss smoothl1 --y_norm zscore --w_acetal 1.0 --w_air 5.0 --wd 0 --outdir runs3/math_resnet1d_v3t_reim
+python scripts/train_curriculum.py --stage math --model resnet1d_v3t   --csv dataset/MATH_S11.csv --feat_scaler dataset/norm_math_reim.npz   --epochs 300 --lr 7e-4 --batch_size 256 --loss smoothl1 --y_norm zscore   --w_acetal 1.0 --w_air 8.0 --wd 0  --outdir runs3/math_resnet1d_v3t_reim_wair8
+
+-----------------------------------------
+refit normalizer to make it tighter
+# (re)fit scaler for real/imag using robust statistics
+python utils/fit_normalizer.py --csv dataset/MATH_S11.csv  --mode robust --out dataset/norm_math_reim_robust.npz
+
+# retrain with the robust scaler
+python scripts/train_curriculum.py --stage math --model resnet1d_v3t  --csv dataset/MATH_S11.csv --feat_scaler dataset/norm_math_reim_robust.npz  --epochs 300 --lr 7e-4 --batch_size 256 --loss smoothl1 --y_norm zscore  --w_acetal 1.0 --w_air 8.0 --wd 0 --outdir runs3/math_resnet1d_v3t_reim_robust
+
+------------------------------------
+inspect_s11
+python inspect_s11.py   --csvs dataset/MATH_S11.csv   --label-overrides MATH   --outdir reports/explore_math

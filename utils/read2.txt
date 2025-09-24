@@ -1,0 +1,57 @@
+#Pre-train
+# MLP v2 (same model, new trainer)
+python scripts\train_v2.py --stage pretrain --model mlp  --math_csv dataset\MATH_S11.csv --cst_csv dataset\CST_S11.csv  --math_scaler dataset\norm_math_unwrap.npz --cst_scaler dataset\norm_cst_unwrap.npz  --outdir runs_v2\mlp --workers 0
+
+# ResNet1D v2 (GroupNorm)
+python scripts\train_v2.py --stage pretrain --model resnet1d  --math_csv dataset\MATH_S11.csv --cst_csv dataset\CST_S11.csv  --math_scaler dataset\norm_math_unwrap.npz --cst_scaler dataset\norm_cst_unwrap.npz  --outdir runs_v2\resnet1d --workers 0
+
+# Transformer v2 (same as v1, benefits from new loss/scheduler)
+python scripts\train_v2.py --stage pretrain --model transformer  --math_csv dataset\MATH_S11.csv --cst_csv dataset\CST_S11.csv  --math_scaler dataset\norm_math_unwrap.npz --cst_scaler dataset\norm_cst_unwrap.npz  --outdir runs_v2\transformer --workers 0
+----------------------------------------------------------------------------------------------------
+
+#Finetune on Physical
+# MLP
+python scripts\train_v2.py --stage finetune --model mlp  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\mlp\pretrain_mlp.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3  --outdir runs_v2\mlp_finetune --workers 0
+
+# ResNet1D (GN)
+python scripts\train_v2.py --stage finetune --model resnet1d  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\resnet1d\pretrain_resnet1d.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3  --outdir runs_v2\resnet1d_finetune --workers 0
+
+# Transformer
+python scripts\train_v2.py --stage finetune --model transformer  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\transformer\pretrain_transformer.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3  --outdir runs_v2\transformer_finetune --workers 0
+
+##Tanh
+python scripts\train_v2.py --stage finetune --model resnet1d  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\resnet1d\pretrain_resnet1d.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3  --y_norm minmax_sym --out_act tanh --y_pad_frac 0.05  --outdir runs_v2\resnet1d_ft_tanh --workers 0
+
+
+-------------------------------------------------------------------------------------------------------
+
+#Eval
+python scripts\eval.py --model mlp --weights runs_v2\mlp_finetune\finetune_mlp.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_v2_mlp_test.csv
+
+python scripts\eval.py --model resnet1d_v2  --weights runs_v2\resnet1d_finetune\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_v2_resnet1d_test.csv
+
+python scripts\eval.py --model transformer --weights runs_v2\transformer_finetune\finetune_transformer.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_v2_transformer_test.csv
+
+---------------------------------------------------------------------------------------------------
+:: tanh variant (minmax_sym + tanh)
+python scripts\eval.py --model resnet1d_v2--weights runs_v2\resnet1d_ft_tanh\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_v2_resnet1d_tanh_test.csv
+------------------------------------------------------------------------------------------------------------------------
+Train_v2
+:: A) z-score + linear (baseline)
+python scripts\train_v2.py --stage finetune --model resnet1d  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\resnet1d\pretrain_resnet1d.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3  --y_norm zscore --out_act linear  --outdir runs_v2\resnet1d_ft_zlin --workers 0
+
+:: B) minmax_sym + tanh (bounded, zero-centered)
+python scripts\train_v2.py --stage finetune --model resnet1d  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\resnet1d\pretrain_resnet1d.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3 --y_norm minmax_sym --out_act tanh --y_pad_frac 0.05  --outdir runs_v2\resnet1d_ft_tanh --workers 0
+
+:: C) minmax + sigmoid (bounded, non-negative)
+python scripts\train_v2.py --stage finetune --model resnet1d  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs_v2\resnet1d\pretrain_resnet1d.pt  --lr 5e-4 --epochs 100 --loss smoothl1 --loss_weights 1.0 1.3  --y_norm minmax --out_act sigmoid --y_pad_frac 0.05  --outdir runs_v2\resnet1d_ft_sig --workers 0
+
+  --------------------------------------------------
+Eval
+  python scripts\eval.py --model resnet1d_v2  --weights runs_v2\resnet1d_ft_zlin\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_v2_resnet1d_zlin_test.csv
+
+python scripts\eval.py --model resnet1d_v2  --weights runs_v2\resnet1d_ft_tanh\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_v2_resnet1d_tanh_test.csv
+
+python scripts\eval.py --model resnet1d_v2  --weights runs_v2\resnet1d_ft_sig\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_act auto   --out_csv preds_v2_resnet1d_sig_test.csv
+
+python scripts\eval.py --model resnet1d_v2  --weights runs_v2\resnet1d_ft_tanh\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_act auto --out_csv preds_v2_resnet1d_tanh_test.csv

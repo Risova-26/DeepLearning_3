@@ -1,0 +1,141 @@
+(1)
+
+#pre-train Math + CST
+python -u utils/fit_normalizer.py --csv dataset/MATH_S11.csv --out dataset/norm_math_unwrap.npz --mode zscore --unwrap-phase
+python -u utils/fit_normalizer.py --csv dataset/CST_S11.csv --out dataset/norm_cst_unwrap.npz --mode zscore --unwrap-phase
+
+#Physical dataset
+python utils/make_phy_split.py   --csv dataset/Phy_S11.csv   --train 0.70 --val 0.15 --seed 42 --prefix phy   --no-stratify
+
+python utils/make_phy_trainonly.py
+
+python -u utils/fit_normalizer.py  --csv dataset/Phy_S11_trainOnly.csv  --out dataset/norm_phys_train_unwrap.npz  --mode zscore --unwrap-phase
+
+---------------------------------------------------------
+(2)
+
+#MLP
+python scripts\train.py --stage pretrain --model mlp  --math_csv dataset\MATH_S11.csv --cst_csv dataset\CST_S11.csv  --math_scaler dataset\norm_math_unwrap.npz --cst_scaler dataset\norm_cst_unwrap.npz  --outdir runs\mlp --workers 0
+
+#ResNet1D
+python scripts\train.py --stage pretrain --model resnet1d  --math_csv dataset\MATH_S11.csv --cst_csv dataset\CST_S11.csv  --math_scaler dataset\norm_math_unwrap.npz --cst_scaler dataset\norm_cst_unwrap.npz  --outdir runs\resnet1d --workers 0
+
+#Transformer
+python scripts\train.py --stage pretrain --model transformer  --math_csv dataset\MATH_S11.csv --cst_csv dataset\CST_S11.csv  --math_scaler dataset\norm_math_unwrap.npz --cst_scaler dataset\norm_cst_unwrap.npz  --outdir runs\transformer --workers 0
+
+-------------------------------------------------------------
+(3) Finetne on Physical
+
+:: MLP fine-tune
+python scripts\train.py --stage finetune --model mlp  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs\mlp\pretrain_mlp.pt  --lr 5e-4 --epochs 80 --outdir runs\mlp_finetune --workers 0
+
+:: ResNet1D fine-tune
+python scripts\train.py --stage finetune --model resnet1d  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs\resnet1d\pretrain_resnet1d.pt --lr 5e-4 --epochs 80 --outdir runs\resnet1d_finetune --workers 0
+
+:: Transformer fine-tune
+python scripts\train.py --stage finetune --model transformer  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt  --init_weights runs\transformer\pretrain_transformer.pt  --lr 5e-4 --epochs 80 --outdir runs\transformer_finetune --workers 0
+
+----------------------------------------------------------------
+(4) Eval Physical
+
+python scripts\eval.py --model mlp --weights runs\mlp_finetune\finetune_mlp.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_mlp_test.csv
+
+python scripts\eval.py --model resnet1d --weights runs\resnet1d_finetune\finetune_resnet1d.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_resnet1d_test.csv
+
+python scripts\eval.py --model transformer --weights runs\transformer_finetune\finetune_transformer.pt  --phy_csv dataset\Phy_S11.csv --phy_scaler dataset\norm_phys_train_unwrap.npz  --phy_test_ids phy_test.txt --out_csv preds_transformer_test.csv
+
+-----------------------------
+
+
+
+
+#(Optional) Fit a Physical-only scaler (using train IDs only)
+python utils/fit_normalizer.py \
+  --csv dataset/Phy_S11.csv \
+  --out dataset/norm_phys_train.npz --mode zscore
+
+#(Optional) Make a lightly re-calibrated scaler for fine-tune:
+from utils.normalizer import S11Normalizer
+S11Normalizer.ema_calibrate(
+    "dataset/norm_pretrain_mc.npz",
+    "dataset/norm_phys_train.npz",
+    "dataset/norm_finetune_calibrated.npz",
+    alpha=0.2
+)
+#Use in training:
+from utils.normalizer import S11Normalizer
+norm = S11Normalizer("dataset/norm_pretrain_mc.npz").to(device)
+
+# in training loop, after you assemble a batch `x` of shape [B,2,200]:
+x = norm.transform(x)
+y_pred = model(x)
+
+# Math
+python utils/fit_normalizer.py \
+  --csv dataset/MATH_S11.csv \
+  --out dataset/norm_math_unwrap.npz \
+  --mode zscore --unwrap-phase
+
+# CST
+python utils/fit_normalizer.py \
+  --csv dataset/CST_S11.csv \
+  --out dataset/norm_cst_unwrap.npz \
+  --mode zscore --unwrap-phase
+
+# Physical (use only TRAIN IDs; if you haven't split yet, refit this after you split)
+python utils/fit_normalizer.py \
+  --csv dataset/Phy_S11.csv \
+  --out dataset/norm_phys_unwrap.npz \
+  --mode zscore --unwrap-phase
+
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ #Train### 
+
+# MLP
+python train.py --stage pretrain --model mlp \
+  --math_csv dataset/MATH_S11.csv --cst_csv dataset/CST_S11.csv \
+  --math_scaler dataset/norm_math_unwrap.npz --cst_scaler dataset/norm_cst_unwrap.npz \
+  --outdir runs/mlp
+
+# ResNet1D
+python train.py --stage pretrain --model resnet1d \
+  --math_csv dataset/MATH_S11.csv --cst_csv dataset/CST_S11.csv \
+  --math_scaler dataset/norm_math_unwrap.npz --cst_scaler dataset/norm_cst_unwrap.npz \
+  --outdir runs/resnet1d
+
+# Transformer
+python train.py --stage pretrain --model transformer \
+  --math_csv dataset/MATH_S11.csv --cst_csv dataset/CST_S11.csv \
+  --math_scaler dataset/norm_math_unwrap.npz --cst_scaler dataset/norm_cst_unwrap.npz \
+  --outdir runs/transformer
+
+
+##Finetune###
+# assume you saved Physical ID lists to txt files: phy_train.txt, phy_val.txt, phy_test.txt
+python train.py --stage finetune --model mlp \
+  --phy_csv dataset/Phy_S11.csv --phy_scaler dataset/norm_phys_unwrap.npz \
+  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt \
+  --outdir runs/mlp_finetune
+
+python train.py --stage finetune --model resnet1d \
+  --phy_csv dataset/Phy_S11.csv --phy_scaler dataset/norm_phys_unwrap.npz \
+  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt \
+  --outdir runs/resnet1d_finetune
+
+python train.py --stage finetune --model transformer \
+  --phy_csv dataset/Phy_S11.csv --phy_scaler dataset/norm_phys_unwrap.npz \
+  --phy_train_ids phy_train.txt --phy_val_ids phy_val.txt \
+  --outdir runs/transformer_finetune
+python eval.py --model mlp --weights runs/mlp_finetune/finetune_mlp.pt \
+  --phy_csv dataset/Phy_S11.csv --phy_scaler dataset/norm_phys_unwrap.npz \
+  --phy_test_ids phy_test.txt --out_csv preds_mlp_test.csv
+
+python eval.py --model resnet1d --weights runs/resnet1d_finetune/finetune_resnet1d.pt \
+  --phy_csv dataset/Phy_S11.csv --phy_scaler dataset/norm_phys_unwrap.npz \
+  --phy_test_ids phy_test.txt --out_csv preds_resnet1d_test.csv
+
+python eval.py --model transformer --weights runs/transformer_finetune/finetune_transformer.pt \
+  --phy_csv dataset/Phy_S11.csv --phy_scaler dataset/norm_phys_unwrap.npz \
+  --phy_test_ids phy_test.txt --out_csv preds_transformer_test.csv
+
+  python -c "import numpy as np, os; p='dataset/norm_math_unwrap.npz'; print('exists=', os.path.exists(p)); import sys; print('load-ok' if os.path.exists(p) and np.load(p) else 'no-file')"
